@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-readonly REPOSITORY_URL="https://github.com/b-nnett/codex-subscription-router.git"
+readonly REPOSITORY_URL="https://github.com/vrlda/codex-subscription-router.git"
 readonly DEFAULT_SOURCE_DIR="${HOME}/.codex-subscription-router/source"
 readonly SOURCE_DIR="${CODEX_SUBSCRIPTION_ROUTER_SOURCE_DIR:-${DEFAULT_SOURCE_DIR}}"
 readonly DESTINATION_APP="${HOME}/Applications/Codex Subscription Router.app"
@@ -78,6 +78,7 @@ resolve_source_dir() {
             fail "${SOURCE_DIR} is not on main; switch branches or set CODEX_SUBSCRIPTION_ROUTER_SOURCE_DIR."
         fi
         log "Updating source"
+        git -C "${SOURCE_DIR}" remote set-url origin "${REPOSITORY_URL}"
         git -C "${SOURCE_DIR}" pull --ff-only origin main >&2
     elif [ -e "${SOURCE_DIR}" ]; then
         fail "${SOURCE_DIR} exists but is not a Git repository."
@@ -134,7 +135,11 @@ main() {
     fi
 
     log "Building and signing Codex Subscription Router"
-    python3 scripts/patch_app.py "${patch_arguments[@]}"
+    if [ "${#patch_arguments[@]}" -ne 0 ]; then
+        python3 scripts/patch_app.py "${patch_arguments[@]}"
+    else
+        python3 scripts/patch_app.py
+    fi
 
     log "Launching Codex Subscription Router"
     open "${DESTINATION_APP}"

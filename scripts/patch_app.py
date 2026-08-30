@@ -76,7 +76,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--allow-adhoc-signing",
         action="store_true",
-        help="Allow an ad-hoc signature (Appshots and Computer Use may stop working).",
+        help="Accepted for compatibility; ad-hoc signing is now the automatic fallback.",
     )
     parser.add_argument(
         "--allow-untested-source",
@@ -123,16 +123,12 @@ def resolve_signing_identity(allow_adhoc: bool) -> str:
         for identity in available:
             if identity.startswith(prefix):
                 return identity
-    if allow_adhoc:
-        print(
-            "Warning: using an ad-hoc signature; Appshots and Computer Use may be unavailable.",
-            file=sys.stderr,
-        )
-        return "-"
-    raise RuntimeError(
-        "no team-backed code-signing identity found; set CODEX_MUX_SIGNING_IDENTITY "
-        "or explicitly pass --allow-adhoc-signing"
+    print(
+        "Warning: no team-backed code-signing identity found; using an ad-hoc "
+        "signature. Appshots and Computer Use may be unavailable.",
+        file=sys.stderr,
     )
+    return "-"
 
 
 def signing_team_identifier(identity: str) -> str | None:

@@ -1,5 +1,10 @@
 # Codex Subscription Router
 
+This is the actively maintained `vrlda` fork of
+[`b-nnett/codex-subscription-router`](https://github.com/b-nnett/codex-subscription-router).
+It tracks frequent ChatGPT desktop releases and carries cross-account chat
+continuity, manual switching, and automatic failover improvements.
+
 ![Multi-subscription account menu](screenshots/account-menu.png)
 
 Use multiple ChatGPT subscriptions from one independent macOS desktop app.
@@ -93,10 +98,12 @@ is rejected by default rather than being partially patched. See
 - Xcode Command Line Tools
 - Go 1.26+
 - Node.js 22.12+ and npm
-- An Apple Development or Developer ID Application signing identity
+- Optional: an Apple Development or Developer ID Application signing identity
 
-A team-backed signing identity is required for reliable Appshots and Computer
-Use permissions. Ad-hoc signing is intended only for diagnostics.
+A team-backed signing identity is used when available for reliable Appshots and
+Computer Use permissions. Without one, the installer automatically falls back
+to an ad-hoc signature; the core router remains usable, while native helpers may
+not pass peer checks.
 
 ## Install
 
@@ -104,7 +111,7 @@ Run one command. It downloads or updates the source, installs the locked build
 dependency, creates the independently signed app, and launches it:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/b-nnett/codex-subscription-router/main/install.sh | /bin/bash
+curl -fsSL https://raw.githubusercontent.com/vrlda/codex-subscription-router/main/install.sh | /bin/bash
 ```
 
 The installer keeps its source checkout in
@@ -120,12 +127,12 @@ compatibility check fails.
 
 ### Install via prompt
 
-> Install Codex Subscription Router from `https://github.com/b-nnett/codex-subscription-router` on this Mac using the repository's supported one-command installer, without modifying the official ChatGPT app or deleting any existing router state. Verify the resulting app and Computer Use helper signatures, launch the app, and ask me only if a prerequisite or macOS permission requires interaction.
+> Install Codex Subscription Router from `https://github.com/vrlda/codex-subscription-router` on this Mac using the repository's supported one-command installer, without modifying the official ChatGPT app or deleting any existing router state. Verify the resulting app and Computer Use helper signatures, launch the app, and ask me only if a prerequisite or macOS permission requires interaction.
 
 ### Install from a clone
 
 ```sh
-git clone https://github.com/b-nnett/codex-subscription-router.git
+git clone https://github.com/vrlda/codex-subscription-router.git
 cd codex-subscription-router
 npm ci --ignore-scripts
 python3 scripts/patch_app.py
@@ -152,13 +159,15 @@ designated requirement and can invalidate existing macOS privacy consent. The
 patcher refuses an unexpected team change unless you deliberately pass
 `--allow-signing-team-change`.
 
-For diagnostic builds without a certificate:
+To explicitly document an ad-hoc build in a scripted invocation:
 
 ```sh
 python3 scripts/patch_app.py --allow-adhoc-signing
 ```
 
-Appshots and Computer Use may not function with an ad-hoc signature.
+The flag is retained for compatibility; ad-hoc signing is already selected
+automatically when no certificate is available. Appshots and Computer Use may
+not function with an ad-hoc signature.
 
 ## Grant macOS permissions
 

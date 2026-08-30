@@ -1,5 +1,9 @@
 # Notices
 
+This maintained fork is derived from Bennett Blackham's MIT-licensed
+`b-nnett/codex-subscription-router`. Original copyright and license notices are
+preserved. Fork modifications are maintained by vrlda contributors.
+
 This repository contains original patching and multiplexing source. It does not
 include and must not be used to redistribute the official ChatGPT application,
 its ASAR archive, embedded native services, or other OpenAI binaries.

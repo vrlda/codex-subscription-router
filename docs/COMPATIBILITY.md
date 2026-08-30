@@ -13,7 +13,7 @@ stops instead of applying a partial patch.
 | `app.asar` SHA-256 | `d5a44ed9e2f1db5f81dbbe85408aed256f3203c5b16f00817bb9d7cd941343cf` |
 | Architecture | Apple silicon (`arm64`) |
 
-## ChatGPT build 7303
+## Release 0.2.0
 
 | Component | Tested value |
 | --- | --- |
