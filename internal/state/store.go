@@ -329,6 +329,44 @@ func (s *Store) SetThreadOwner(threadID, accountID string) error {
 	return s.saveLocked()
 }
 
+// SetThreadOwnerIfAbsent records ownership discovered from app-server traffic
+// without replacing an explicit assignment or a previous routing decision.
+func (s *Store) SetThreadOwnerIfAbsent(threadID, accountID string) (bool, error) {
+	if threadID == "" || accountID == "" {
+		return false, errors.New("thread and account IDs are required")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.owners[threadID]; ok {
+		return false, nil
+	}
+	s.owners[threadID] = accountID
+	if err := s.saveLocked(); err != nil {
+		delete(s.owners, threadID)
+		return false, err
+	}
+	return true, nil
+}
+
+// CompareAndSetThreadOwner avoids overwriting a concurrent manual switch while
+// repairing a stale assignment.
+func (s *Store) CompareAndSetThreadOwner(threadID, expectedAccountID, accountID string) (bool, error) {
+	if threadID == "" || expectedAccountID == "" || accountID == "" {
+		return false, errors.New("thread and account IDs are required")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.owners[threadID] != expectedAccountID {
+		return false, nil
+	}
+	s.owners[threadID] = accountID
+	if err := s.saveLocked(); err != nil {
+		s.owners[threadID] = expectedAccountID
+		return false, err
+	}
+	return true, nil
+}
+
 func (s *Store) ThreadCounts() map[string]int {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

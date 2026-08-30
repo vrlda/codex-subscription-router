@@ -209,9 +209,21 @@ def ensure_components_are_stopped(paths: tuple[Path, ...]) -> None:
             stderr=subprocess.PIPE,
             text=True,
         )
-        if result.returncode == 0 and result.stdout.strip():
+        running_pids: list[str] = []
+        for pid in result.stdout.split():
+            command = subprocess.run(
+                ["ps", "-p", pid, "-o", "command="],
+                check=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            ).stdout.strip()
+            if command.startswith(f"{path}/Contents/"):
+                running_pids.append(pid)
+        if running_pids:
             raise RuntimeError(
-                f"quit the running component before replacing it: {path}"
+                "quit the running component before replacing it: "
+                f"{path} (pid {', '.join(running_pids)})"
             )
 
 
@@ -1130,6 +1142,19 @@ def patch_renderer_current(extracted: Path, token: str) -> None:
     if bundle.count(anchor) != 1:
         raise RuntimeError("could not find current-build native profile component")
     bundle = bundle.replace(anchor, component + "\n" + anchor, 1)
+
+    usage_query = (
+        'let e=await dS.safeGet(`/wham/usage`,'
+        '{additionalHeaders:{"OAI-App-Brand":cS.toLowerCase()}})'
+    )
+    if bundle.count(usage_query) != 1:
+        raise RuntimeError("could not find current-build native usage-status request")
+    bundle = bundle.replace(
+        usage_query,
+        "let e=await codexMuxUsageStatus("
+        "globalThis.__codexMuxThreadAccountId??`primary`)",
+        1,
+    )
     replacements = {
         "usageItems:Ct": "usageItems:(0,l8.jsx)(CodexMuxAccountMenu,{})",
         "triggerButton:Dt,onOpenChange:c,children:[N,null]": "triggerButton:Dt,onOpenChange:CodexMuxProfileMenuOpenChange(c),children:[N,null]",

@@ -44,6 +44,56 @@ func TestStoreBootstrapsPrimaryAndPersistsThreadAffinity(t *testing.T) {
 	}
 }
 
+func TestSetThreadOwnerIfAbsentPreservesExistingAssignment(t *testing.T) {
+	root := t.TempDir()
+	store, err := Open(filepath.Join(root, "mux"), filepath.Join(root, "primary"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondary, err := store.AddAccount("Secondary")
+	if err != nil {
+		t.Fatal(err)
+	}
+	set, err := store.SetThreadOwnerIfAbsent("thread-1", "primary")
+	if err != nil || !set {
+		t.Fatalf("first assignment failed: set=%v err=%v", set, err)
+	}
+	set, err = store.SetThreadOwnerIfAbsent("thread-1", secondary.ID)
+	if err != nil || set {
+		t.Fatalf("existing assignment was replaced: set=%v err=%v", set, err)
+	}
+	owner, ok := store.ThreadOwner("thread-1")
+	if !ok || owner != "primary" {
+		t.Fatalf("unexpected owner: owner=%q ok=%v", owner, ok)
+	}
+	if err := store.SetThreadOwner("thread-1", secondary.ID); err != nil {
+		t.Fatal(err)
+	}
+	owner, ok = store.ThreadOwner("thread-1")
+	if !ok || owner != secondary.ID {
+		t.Fatalf("explicit switch did not replace owner: owner=%q ok=%v", owner, ok)
+	}
+}
+
+func TestCompareAndSetThreadOwnerPreservesConcurrentSwitch(t *testing.T) {
+	root := t.TempDir()
+	store, err := Open(filepath.Join(root, "mux"), filepath.Join(root, "primary"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetThreadOwner("thread-1", "primary"); err != nil {
+		t.Fatal(err)
+	}
+	replaced, err := store.CompareAndSetThreadOwner("thread-1", "stale", "fallback")
+	if err != nil || replaced {
+		t.Fatalf("unexpected replacement: replaced=%v err=%v", replaced, err)
+	}
+	owner, ok := store.ThreadOwner("thread-1")
+	if !ok || owner != "primary" {
+		t.Fatalf("concurrent assignment was overwritten: owner=%q ok=%v", owner, ok)
+	}
+}
+
 func TestAccountConfigInheritsManagedMCPAndPreservesLocalProjects(t *testing.T) {
 	root := t.TempDir()
 	primaryHome := filepath.Join(root, "primary")

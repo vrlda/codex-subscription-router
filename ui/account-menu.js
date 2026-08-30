@@ -59,6 +59,12 @@ async function codexMuxRateLimitResets(accountId) {
   );
 }
 
+async function codexMuxUsageStatus(accountId) {
+  return codexMuxRequest(
+    `/accounts/${encodeURIComponent(accountId)}/usage`,
+  );
+}
+
 async function codexMuxConsumeRateLimitReset(accountId, input) {
   return codexMuxRequest(
     `/accounts/${encodeURIComponent(accountId)}/rate-limit-resets/consume`,
@@ -256,7 +262,18 @@ function CodexMuxAccountMenu() {
   const [error, setError] = kXc.useState("");
   const [login, setLogin] = kXc.useState(null);
   const [codeCopied, setCodeCopied] = kXc.useState(false);
+  const queryClient = lt();
   const loginAccountId = login?.accountId || null;
+
+  kXc.useEffect(() => {
+    const refreshUsage = () => {
+      queryClient.invalidateQueries({ queryKey: ["rate-limit-status"] });
+    };
+    window.addEventListener("codex-mux-thread-account-changed", refreshUsage);
+    return () => {
+      window.removeEventListener("codex-mux-thread-account-changed", refreshUsage);
+    };
+  }, [queryClient]);
 
   const refresh = kXc.useCallback(async () => {
     try {

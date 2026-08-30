@@ -47,7 +47,7 @@ type consumeResetCreditInput struct {
 }
 
 func (m *Multiplexer) RateLimitResetCredits(ctx context.Context, accountID string) (json.RawMessage, error) {
-	account, err := m.resetAccount(accountID)
+	account, err := m.accountForAuthenticatedRequest(accountID)
 	if err != nil {
 		return nil, err
 	}
@@ -72,7 +72,7 @@ func (m *Multiplexer) ConsumeRateLimitResetCredit(
 	creditID *string,
 	redeemRequestID string,
 ) (json.RawMessage, error) {
-	account, err := m.resetAccount(accountID)
+	account, err := m.accountForAuthenticatedRequest(accountID)
 	if err != nil {
 		return nil, err
 	}
@@ -244,7 +244,7 @@ func (m *Multiplexer) invalidateResetCreditCache(accountID string) {
 	m.resetCreditsMu.Unlock()
 }
 
-func (m *Multiplexer) resetAccount(accountID string) (state.Account, error) {
+func (m *Multiplexer) accountForAuthenticatedRequest(accountID string) (state.Account, error) {
 	account, ok := m.store.Account(accountID)
 	if !ok {
 		return state.Account{}, fmt.Errorf("account %q not found", accountID)
@@ -299,6 +299,18 @@ func requestRateLimitResetCredits(
 	account state.Account,
 	body []byte,
 ) (json.RawMessage, error) {
+	return requestAccountJSON(ctx, client, endpoint, method, account, body, nil)
+}
+
+func requestAccountJSON(
+	ctx context.Context,
+	client *http.Client,
+	endpoint string,
+	method string,
+	account state.Account,
+	body []byte,
+	headers map[string]string,
+) (json.RawMessage, error) {
 	credentials, err := readAuthFile(filepath.Join(account.CodexHome, "auth.json"))
 	if err != nil {
 		return nil, err
@@ -308,32 +320,35 @@ func requestRateLimitResetCredits(
 	}
 	request, err := http.NewRequestWithContext(ctx, method, endpoint, bytes.NewReader(body))
 	if err != nil {
-		return nil, fmt.Errorf("create rate-limit reset request: %w", err)
+		return nil, fmt.Errorf("create account request: %w", err)
 	}
 	request.Header.Set("Authorization", "Bearer "+credentials.Tokens.AccessToken)
 	request.Header.Set("ChatGPT-Account-ID", credentials.Tokens.AccountID)
 	request.Header.Set("Accept", "application/json")
 	request.Header.Set("User-Agent", "Codex Subscription Router")
+	for name, value := range headers {
+		request.Header.Set(name, value)
+	}
 	if len(body) > 0 {
 		request.Header.Set("Content-Type", "application/json")
 	}
 	response, err := client.Do(request)
 	if err != nil {
-		return nil, fmt.Errorf("request rate-limit resets: %w", err)
+		return nil, fmt.Errorf("perform account request: %w", err)
 	}
 	defer response.Body.Close()
 	data, err := io.ReadAll(io.LimitReader(response.Body, rateLimitResetMaxBytes+1))
 	if err != nil {
-		return nil, fmt.Errorf("read rate-limit reset response: %w", err)
+		return nil, fmt.Errorf("read account response: %w", err)
 	}
 	if len(data) > rateLimitResetMaxBytes {
-		return nil, errors.New("rate-limit reset response is too large")
+		return nil, errors.New("account response is too large")
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return nil, fmt.Errorf("rate-limit reset request returned status %d", response.StatusCode)
+		return nil, fmt.Errorf("account request returned status %d", response.StatusCode)
 	}
 	if !json.Valid(data) {
-		return nil, errors.New("rate-limit reset response is not valid JSON")
+		return nil, errors.New("account response is not valid JSON")
 	}
 	return json.RawMessage(data), nil
 }

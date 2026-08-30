@@ -122,7 +122,69 @@ func (m *Multiplexer) ThreadAccount(ctx context.Context, threadID string) (Accou
 	if !ok {
 		return AccountSnapshot{}, fmt.Errorf("thread %q has no subscription assignment", threadID)
 	}
-	return m.accountSnapshotWithProfile(ctx, accountID, true)
+	snapshot, snapshotErr := m.accountSnapshotWithProfile(ctx, accountID, true)
+	if snapshotErr == nil && threadAccountAvailable(snapshot) {
+		return snapshot, nil
+	}
+	if m.threadHasActiveTurn(threadID) {
+		if snapshotErr != nil {
+			return AccountSnapshot{}, snapshotErr
+		}
+		return snapshot, nil
+	}
+
+	fallback, fallbackErr := m.connectedThreadFallback(ctx, accountID)
+	if fallbackErr != nil {
+		if snapshotErr != nil {
+			return AccountSnapshot{}, snapshotErr
+		}
+		return AccountSnapshot{}, fmt.Errorf(
+			"subscription %q is no longer connected and no fallback is available",
+			snapshot.Label,
+		)
+	}
+	if err := m.resumeThreadOnAccount(ctx, threadID, accountID, fallback.ID); err != nil {
+		return AccountSnapshot{}, fmt.Errorf("recover chat with %s: %w", fallback.Label, err)
+	}
+	recovered, err := m.store.CompareAndSetThreadOwner(threadID, accountID, fallback.ID)
+	if err != nil {
+		return AccountSnapshot{}, err
+	}
+	if !recovered {
+		currentID, ok := m.store.ThreadOwner(threadID)
+		if !ok {
+			return AccountSnapshot{}, fmt.Errorf("thread %q has no subscription assignment", threadID)
+		}
+		current, currentErr := m.accountSnapshotWithProfile(ctx, currentID, true)
+		if currentErr != nil || !threadAccountAvailable(current) {
+			return AccountSnapshot{}, errors.New("chat subscription changed while recovering stale assignment")
+		}
+		return current, nil
+	}
+	m.publish(Event{
+		Type:      "thread-account-recovered",
+		AccountID: fallback.ID,
+		Message:   fmt.Sprintf("Chat recovered with %s", fallback.Label),
+		Data:      map[string]any{"threadId": threadID, "previousAccountId": accountID},
+	})
+	return fallback, nil
+}
+
+func (m *Multiplexer) connectedThreadFallback(ctx context.Context, excludedAccountID string) (AccountSnapshot, error) {
+	for _, account := range m.store.Accounts() {
+		if account.ID == excludedAccountID {
+			continue
+		}
+		snapshot, err := m.accountSnapshotWithProfile(ctx, account.ID, true)
+		if err == nil && threadAccountAvailable(snapshot) {
+			return snapshot, nil
+		}
+	}
+	return AccountSnapshot{}, errors.New("no connected ChatGPT subscription is available")
+}
+
+func threadAccountAvailable(snapshot AccountSnapshot) bool {
+	return snapshot.Enabled && snapshot.Connected && snapshot.AuthType == "chatgpt"
 }
 
 // SwitchThreadAccount resumes an existing chat on another subscription while
@@ -150,10 +212,7 @@ func (m *Multiplexer) SwitchThreadAccount(ctx context.Context, threadID, targetA
 	if sourceAccountID == targetAccountID {
 		return target, nil
 	}
-	m.activeTurnsMu.Lock()
-	_, active := m.activeTurns[threadID]
-	m.activeTurnsMu.Unlock()
-	if active {
+	if m.threadHasActiveTurn(threadID) {
 		return AccountSnapshot{}, errors.New("wait for the current turn to finish before switching subscriptions")
 	}
 	if err := m.resumeThreadOnAccount(ctx, threadID, sourceAccountID, targetAccountID); err != nil {
@@ -169,6 +228,13 @@ func (m *Multiplexer) SwitchThreadAccount(ctx context.Context, threadID, targetA
 		Data:      map[string]any{"threadId": threadID, "previousAccountId": sourceAccountID},
 	})
 	return target, nil
+}
+
+func (m *Multiplexer) threadHasActiveTurn(threadID string) bool {
+	m.activeTurnsMu.Lock()
+	defer m.activeTurnsMu.Unlock()
+	_, active := m.activeTurns[threadID]
+	return active
 }
 
 func (m *Multiplexer) StartLogin(ctx context.Context, id, mode string) (json.RawMessage, error) {

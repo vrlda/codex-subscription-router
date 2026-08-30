@@ -91,6 +91,7 @@ type Multiplexer struct {
 	resetCreditsMu       sync.Mutex
 	resetCreditsCache    map[string]resetCreditsCacheEntry
 	resetCreditsEndpoint string
+	usageStatusEndpoint  string
 
 	previewMu        sync.RWMutex
 	rateLimitPreview *RateLimitPreview
@@ -120,6 +121,7 @@ func New(options Options) (*Multiplexer, error) {
 		now:                  time.Now,
 		resetCreditsCache:    make(map[string]resetCreditsCacheEntry),
 		resetCreditsEndpoint: rateLimitResetCreditsURL,
+		usageStatusEndpoint:  usageStatusURL,
 		resetPreviews:        make(map[string]ResetCreditsPreview),
 	}, nil
 }
@@ -332,7 +334,7 @@ func (m *Multiplexer) routeTurnStart(message protocol.Message, threadID, ownerID
 	ctx, cancel := context.WithTimeout(context.Background(), 2*requestTimeout)
 	defer cancel()
 	snapshot, err := m.accountSnapshotWithProfile(ctx, ownerID, false)
-	if err != nil || accountHasCapacity(snapshot) {
+	if err == nil && accountHasCapacity(snapshot) {
 		if err := m.forward(ownerID, message); err != nil {
 			m.write(protocol.Failure(message.ID, -32023, err.Error()))
 		}
@@ -410,7 +412,12 @@ func (m *Multiplexer) resumeThreadOnAccount(ctx context.Context, threadID, sourc
 		"model":         nil,
 		"modelProvider": readResult.Thread.ModelProvider,
 	})
+	unsubscribeParams, _ := json.Marshal(map[string]any{"threadId": threadID})
+	if _, err := source.Request(ctx, "thread/unsubscribe", unsubscribeParams); err != nil {
+		return fmt.Errorf("release existing chat: %w", err)
+	}
 	if _, err := target.Request(ctx, "thread/resume", resumeParams); err != nil {
+		_, _ = source.Request(ctx, "thread/resume", resumeParams)
 		return fmt.Errorf("resume existing chat: %w", err)
 	}
 	return nil
@@ -482,11 +489,6 @@ func (m *Multiplexer) handleInbound(inbound backend.Inbound) {
 	if message.Method == "account/rateLimits/updated" {
 		go m.forwardAggregatedRateLimitNotification(inbound.Raw)
 		return
-	}
-	if message.Method == "thread/started" {
-		if threadID := threadIDFromNotification(message.Params); threadID != "" {
-			_ = m.store.SetThreadOwner(threadID, inbound.AccountID)
-		}
 	}
 	if isTerminalUsageLimitNotification(message.Method, message.Params) {
 		threadID := notificationThreadID(message.Params)
@@ -635,7 +637,7 @@ func (m *Multiplexer) learnThreadOwner(route externalRoute, accountID string, re
 	switch route.method {
 	case "thread/start", "thread/fork", "thread/resume", "thread/unarchive":
 		if threadID := threadIDFromResult(result); threadID != "" {
-			_ = m.store.SetThreadOwner(threadID, accountID)
+			_, _ = m.store.SetThreadOwnerIfAbsent(threadID, accountID)
 		}
 	}
 }

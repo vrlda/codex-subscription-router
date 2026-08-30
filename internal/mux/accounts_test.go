@@ -108,6 +108,31 @@ func TestAccountCapacityRequiresFiveHourCapacity(t *testing.T) {
 	}
 }
 
+func TestThreadAccountAvailabilityIgnoresUsageData(t *testing.T) {
+	snapshot := AccountSnapshot{
+		Enabled: true, Connected: true, AuthType: "chatgpt",
+	}
+	if !threadAccountAvailable(snapshot) {
+		t.Fatal("connected ChatGPT account should remain assigned when usage is unavailable")
+	}
+	snapshot.Connected = false
+	if threadAccountAvailable(snapshot) {
+		t.Fatal("disconnected account must not remain assigned to a thread")
+	}
+}
+
+func TestThreadHasActiveTurn(t *testing.T) {
+	multiplexer := &Multiplexer{activeTurns: map[string]activeTurn{
+		"thread-1": {},
+	}}
+	if !multiplexer.threadHasActiveTurn("thread-1") {
+		t.Fatal("tracked turn should be active")
+	}
+	if multiplexer.threadHasActiveTurn("thread-2") {
+		t.Fatal("untracked turn should be inactive")
+	}
+}
+
 func TestAggregateRateLimitsReportsFiveHourPoolDepleted(t *testing.T) {
 	shortMinutes := int64(300)
 	weeklyMinutes := int64(10_080)

@@ -1,26 +1,75 @@
 const CODEX_MUX_THREAD_API = "http://127.0.0.1:__CODEX_MUX_CONTROL_PORT__/v1";
 const CODEX_MUX_THREAD_TOKEN = "__CODEX_MUX_CONTROL_TOKEN__";
+const CODEX_MUX_RATE_LIMITS_CACHE = new Map();
+const CODEX_MUX_RATE_LIMITS_CACHE_TTL_MS = 5 * 60 * 1000;
+
+function codexMuxRememberRateLimits(accountId, rateLimits) {
+  if (rateLimits) {
+    CODEX_MUX_RATE_LIMITS_CACHE.set(accountId, {
+      rateLimits,
+      expiresAt: Date.now() + CODEX_MUX_RATE_LIMITS_CACHE_TTL_MS,
+    });
+    return rateLimits;
+  }
+  const cached = CODEX_MUX_RATE_LIMITS_CACHE.get(accountId);
+  if (cached && cached.expiresAt > Date.now()) return cached.rateLimits;
+  CODEX_MUX_RATE_LIMITS_CACHE.delete(accountId);
+  return undefined;
+}
+
+function codexMuxSetThreadAccountId(accountId) {
+  const nextId = accountId || null;
+  if ((globalThis.__codexMuxThreadAccountId || null) === nextId) return;
+  if (nextId) globalThis.__codexMuxThreadAccountId = nextId;
+  else delete globalThis.__codexMuxThreadAccountId;
+  window.dispatchEvent(new Event("codex-mux-thread-account-changed"));
+}
 
 function CodexMuxThreadSubscription() {
   const route = $n(sr);
   const threadId =
     route.value.routeKind === "local-thread" ? route.value.conversationId : null;
   const [account, setAccount] = TE.useState(null);
+  const [accountThreadId, setAccountThreadId] = TE.useState(null);
   const [accounts, setAccounts] = TE.useState([]);
   const [switching, setSwitching] = TE.useState(false);
   const [error, setError] = TE.useState("");
   const [selectorOpen, setSelectorOpen] = TE.useState(false);
+  const refreshVersion = TE.useRef(0);
+
+  function freshestAccount(owner, availableAccounts, previousAccount) {
+    if (!owner) return null;
+    const fresh = availableAccounts.find((candidate) => candidate.id === owner.id);
+    const previous = previousAccount?.id === owner.id ? previousAccount : null;
+    const rateLimits =
+      codexMuxRememberRateLimits(
+        owner.id,
+        fresh?.rateLimits || owner.rateLimits,
+      );
+    return {
+      ...(previous || {}),
+      ...owner,
+      ...(fresh || {}),
+      rateLimits,
+    };
+  }
 
   TE.useEffect(() => {
     let active = true;
     if (!threadId) {
+      codexMuxSetThreadAccountId(null);
       setAccount(null);
+      setAccountThreadId(null);
       return () => {
         active = false;
       };
     }
+    setAccount(null);
+    codexMuxSetThreadAccountId(null);
+    setSelectorOpen(false);
 
     const refresh = async () => {
+      const version = ++refreshVersion.current;
       try {
         const response = await fetch(
           `${CODEX_MUX_THREAD_API}/thread-account?threadId=${encodeURIComponent(threadId)}`,
@@ -33,21 +82,28 @@ function CodexMuxThreadSubscription() {
             headers: { "X-Codex-Mux-Token": CODEX_MUX_THREAD_TOKEN },
           }).then((result) => (result.ok ? result.json() : { accounts: [] })),
         ]);
-        if (active) {
-          setAccount(body.account || null);
-          setAccounts(
-            (accountsResponse.accounts || []).filter(
+        if (active && version === refreshVersion.current) {
+          codexMuxSetThreadAccountId(body.account?.id || null);
+          const availableAccounts = (accountsResponse.accounts || [])
+            .filter(
               (candidate) =>
                 candidate.enabled &&
                 candidate.connected &&
                 candidate.authType === "chatgpt",
-            ),
+            )
+            .map((candidate) => {
+              const rateLimits =
+                codexMuxRememberRateLimits(candidate.id, candidate.rateLimits);
+              return { ...candidate, rateLimits };
+            });
+          setAccount((previous) =>
+            freshestAccount(body.account || null, availableAccounts, previous),
           );
+          setAccountThreadId(threadId);
+          setAccounts(availableAccounts);
           setError("");
         }
-      } catch {
-        if (active) setAccount(null);
-      }
+      } catch {}
     };
 
     refresh();
@@ -77,7 +133,7 @@ function CodexMuxThreadSubscription() {
     };
   }, [threadId]);
 
-  if (!account) return null;
+  if (!account || accountThreadId !== threadId) return null;
   const short = codexMuxThreadFiveHourWindow(account.rateLimits);
   const weekly = codexMuxThreadWeeklyWindow(account.rateLimits);
   const remaining =
@@ -87,6 +143,7 @@ function CodexMuxThreadSubscription() {
 
   async function switchAccount(accountId) {
     if (!accountId || accountId === account.id || switching) return;
+    refreshVersion.current += 1;
     setSelectorOpen(false);
     setSwitching(true);
     setError("");
@@ -103,7 +160,10 @@ function CodexMuxThreadSubscription() {
       if (!response.ok) {
         throw new Error(body.error || `Request failed (${response.status})`);
       }
-      setAccount(body.account || null);
+      setAccount((previous) =>
+        freshestAccount(body.account || null, accounts, previous),
+      );
+      codexMuxSetThreadAccountId(body.account?.id || null);
     } catch (switchError) {
       setError(switchError.message);
     } finally {
