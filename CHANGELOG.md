@@ -20,7 +20,7 @@ this project uses [Semantic Versioning](https://semver.org/).
   failure.
 - Per-account five-hour and weekly usage, reset timestamps, and a native-style
   selector in the pinned thread summary.
-- Fail-closed support for ChatGPT desktop `26.825.32147` (build `7303`).
+- Fail-closed support for ChatGPT desktop builds `7303` and `7345`.
 
 ### Changed
 

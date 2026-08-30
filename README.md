@@ -82,8 +82,8 @@ Codex Subscription Router currently targets:
 | Component | Supported value |
 | --- | --- |
 | Platform | macOS on Apple silicon |
-| Official ChatGPT versions | `26.803.61601`, `26.825.32147` |
-| Official bundle builds | `6396`, `7303` |
+| Official ChatGPT versions | `26.803.61601`, `26.825.32147`, `26.825.41651` |
+| Official bundle builds | `6396`, `7303`, `7345` |
 | Go | 1.26 or newer |
 | Node.js | 22.12 or newer |
 

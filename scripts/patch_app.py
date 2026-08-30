@@ -55,9 +55,16 @@ TESTED_SOURCE_BUILDS = {
         "26.825.32147",
         "7303",
     ): "0462b03e878f0e78b223b849ee14cbba0de043f2c16acebee163cb95daa622ef",
+    (
+        "26.825.41651",
+        "7345",
+    ): "c089b63abb7ca4a751072c0da434248db13c32bed9c363e1b7e5428584b0576d",
 }
-NATIVE_7303_RENDERER_HASHES = frozenset(
-    {"0462b03e878f0e78b223b849ee14cbba0de043f2c16acebee163cb95daa622ef"}
+CURRENT_NATIVE_RENDERER_HASHES = frozenset(
+    {
+        "0462b03e878f0e78b223b849ee14cbba0de043f2c16acebee163cb95daa622ef",
+        "c089b63abb7ca4a751072c0da434248db13c32bed9c363e1b7e5428584b0576d",
+    }
 )
 EXPECTED_CUA_IDENTIFIER_REPLACEMENTS = 49
 EXPECTED_ASAR_CUA_IDENTIFIER_REPLACEMENTS = frozenset({16, 17})
@@ -1092,8 +1099,8 @@ def patch_renderer(extracted: Path, token: str) -> None:
     thread_bundle_path.write_text(thread_bundle, encoding="utf-8")
 
 
-def patch_renderer_7303(extracted: Path, token: str) -> None:
-    """Restore the native account, usage, and thread controls for build 7303."""
+def patch_renderer_current(extracted: Path, token: str) -> None:
+    """Restore native account, usage, and thread controls in current builds."""
     webview = extracted / "webview"
     index_path = webview / "index.html"
     index = index_path.read_text(encoding="utf-8")
@@ -1121,7 +1128,7 @@ def patch_renderer_7303(extracted: Path, token: str) -> None:
         raise RuntimeError("source app already contains the Codex multiplexer menu")
     anchor = "function Awc(e){let t=(0,Iwc.c)(3)"
     if bundle.count(anchor) != 1:
-        raise RuntimeError("could not find build-7303 native profile component")
+        raise RuntimeError("could not find current-build native profile component")
     bundle = bundle.replace(anchor, component + "\n" + anchor, 1)
     replacements = {
         "usageItems:Ct": "usageItems:(0,l8.jsx)(CodexMuxAccountMenu,{})",
@@ -1132,22 +1139,22 @@ def patch_renderer_7303(extracted: Path, token: str) -> None:
     }
     for old, new in replacements.items():
         if bundle.count(old) != 1:
-            raise RuntimeError(f"could not find build-7303 native anchor: {old}")
+            raise RuntimeError(f"could not find current-build native anchor: {old}")
         bundle = bundle.replace(old, new, 1)
     query = "function odi(){let e=(0,dR.c)(1),t;return e[0]===Symbol.for(`react.memo_cache_sentinel`)?(t={queryKey:[`rate-limit-reset-credits`],queryFn:sdi,refetchInterval:bx.ONE_MINUTE,staleTime:bx.FIVE_SECONDS},e[0]=t):t=e[0],Tx(t)}"
     if bundle.count(query) != 1:
-        raise RuntimeError("could not find build-7303 reset-credit query")
+        raise RuntimeError("could not find current-build reset-credit query")
     bundle = bundle.replace(query, "function odi(){let e=window.__codexMuxResetAccountId;return Tx({queryKey:[`rate-limit-reset-credits`,e??`primary`],queryFn:e?()=>codexMuxRateLimitResets(e):sdi,refetchInterval:bx.ONE_MINUTE,staleTime:bx.FIVE_SECONDS})}", 1)
     mutation = "function cdi(){let e=(0,dR.c)(3),t=Sx(),n=bD(),r;return e[0]!==n||e[1]!==t?(r={mutationFn:ldi,onSuccess:(e,r)=>{let{creditId:i}=r,a=e.code;if(a===`reset`||a===`already_redeemed`){let n=e.code===`reset`?e.credit?.id??i:i;t.setQueryData([`rate-limit-reset-credits`],e=>Mui(e,a,n))}Promise.all([n([`rate-limit-status`]),n([`rate-limit-reset-credits`])])}},e[0]=n,e[1]=t,e[2]=r):r=e[2],Dx(r)}"
     if bundle.count(mutation) != 1:
-        raise RuntimeError("could not find build-7303 reset-credit mutation")
+        raise RuntimeError("could not find current-build reset-credit mutation")
     bundle = bundle.replace(mutation, "function cdi(){let e=Sx(),t=bD(),n=window.__codexMuxResetAccountId,r=[`rate-limit-reset-credits`,n??`primary`];return Dx({mutationFn:n?i=>codexMuxConsumeRateLimitReset(n,i):ldi,onSuccess:(n,i)=>{let{creditId:a}=i,o=n.code;if(o===`reset`||o===`already_redeemed`){let t=o===`reset`?n.credit?.id??a:a;e.setQueryData(r,e=>Mui(e,o,t))}Promise.all([t([`rate-limit-status`]),t(r)])}})}", 1)
     bundle_path.write_text(bundle, encoding="utf-8")
 
     thread_candidates = list((webview / "assets").glob("local-conversation-thread-*.js"))
     thread_candidates = [p for p in thread_candidates if "function oE(e){let t=(0,lE.c)(34)" in p.read_text(encoding="utf-8")]
     if len(thread_candidates) != 1:
-        raise RuntimeError(f"expected one build-7303 thread bundle, found {len(thread_candidates)}")
+        raise RuntimeError(f"expected one current-build thread bundle, found {len(thread_candidates)}")
     thread_path = thread_candidates[0]
     thread = thread_path.read_text(encoding="utf-8")
     thread_component = (PROJECT_ROOT / "ui" / "thread-subscription.js").read_text(encoding="utf-8")
@@ -1158,11 +1165,11 @@ def patch_renderer_7303(extracted: Path, token: str) -> None:
     thread_component = "const CodexMuxReact=t(Qi(),1);\n" + thread_component
     anchor = "function oE(e){let t=(0,lE.c)(34)"
     if thread.count(anchor) != 1:
-        raise RuntimeError("could not find build-7303 thread summary component")
+        raise RuntimeError("could not find current-build thread summary component")
     thread = thread.replace(anchor, thread_component + "\n" + anchor, 1)
     children = "children:[l,u,d,f,p,m,h,_,v,g,y,b,x,S,C,w]"
     if thread.count(children) != 1:
-        raise RuntimeError("could not find build-7303 thread summary section list")
+        raise RuntimeError("could not find current-build thread summary section list")
     thread = thread.replace(children, "children:[l,u,d,f,p,(0,uE.jsx)(CodexMuxThreadSubscription,{}),m,h,_,v,g,y,b,x,S,C,w]", 1)
     thread_path.write_text(thread, encoding="utf-8")
 
@@ -1384,8 +1391,8 @@ def patch_app(
         run([str(asar), "extract", str(original_asar), str(extracted)])
         patch_asar_computer_use_identity(extracted)
         patch_desktop_profile(extracted, installed_computer_use_app)
-        if source_asar_hash in NATIVE_7303_RENDERER_HASHES:
-            patch_renderer_7303(extracted, token)
+        if source_asar_hash in CURRENT_NATIVE_RENDERER_HASHES:
+            patch_renderer_current(extracted, token)
         else:
             patch_renderer(extracted, token)
         sign_native_code_tree(extracted, signing_identity)
